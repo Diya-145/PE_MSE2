@@ -1,0 +1,205 @@
+{
+  "report_title": "Project Evaluation Report",
+  "student": {
+    "name": "Diya Kataria",
+    "student_id": "202401100600076"
+  },
+  "project": {
+    "name": "DrishtiAI",
+    "title": "MLOps Model Quality Monitoring and Retraining",
+    "evaluation_date": "2026-11-20",
+    "evaluation_dataset": "data/incoming_batch.csv"
+  },
+  "executive_summary": {
+    "overview": "The project implements an end-to-end machine-learning operations workflow for binary customer-churn classification. It validates incoming labelled data, evaluates a saved champion model, trains a candidate model, compares both models on a held-out portion of the incoming batch, applies an F1-based quality gate, and records the run and its artifacts.",
+    "outcome": "The workflow completed successfully. On the 200-row holdout, the candidate achieved an F1 score of 0.720 compared with 0.730 for the champion. The candidate exceeded the minimum F1 threshold of 0.65 but did not match the champion, so the quality gate returned retain_champion. The champion was not automatically replaced.",
+    "interpretation": "The included datasets are synthetic. The reported scores demonstrate the workflow and should not be interpreted as evidence of performance on real customer populations."
+  },
+  "project_scope": {
+    "goal": "Determine whether a newly trained candidate model should replace the current champion when a new labelled batch arrives.",
+    "included_capabilities": [
+      "Validate required fields, missing values, duplicate customer identifiers, and binary target values.",
+      "Preprocess numeric and categorical features and train a classification model.",
+      "Evaluate the champion on the incoming labelled batch.",
+      "Train a candidate using an adaptation/evaluation split.",
+      "Apply an F1-based candidate quality gate.",
+      "Save timestamped model-run artifacts and track the run with MLflow when available.",
+      "Run automated tests and validate generated model-run artifacts."
+    ],
+    "out_of_scope": [
+      "Live prediction API or inference service",
+      "Cloud deployment",
+      "Automatic model promotion"
+    ]
+  },
+  "data": {
+    "synthetic": true,
+    "datasets": [
+      {
+        "name": "Original training data",
+        "path": "data/train.csv",
+        "rows": 1400,
+        "target_distribution": {
+          "retained_0": 912,
+          "churned_1": 488
+        }
+      },
+      {
+        "name": "Incoming labelled batch",
+        "path": "data/incoming_batch.csv",
+        "rows": 800,
+        "target_distribution": {
+          "retained_0": 532,
+          "churned_1": 268
+        }
+      }
+    ],
+    "features": [
+      "tenure_months",
+      "monthly_charges",
+      "support_calls",
+      "contract_type",
+      "payment_method",
+      "paperless_billing"
+    ],
+    "identifier_column": {
+      "name": "customer_id",
+      "purpose": "Checked for uniqueness; not used as a model feature."
+    },
+    "target_column": {
+      "name": "churn",
+      "values": {
+        "0": "retained",
+        "1": "churned"
+      }
+    }
+  },
+  "methodology": {
+    "model": {
+      "type": "Class-weight-balanced logistic regression",
+      "numeric_preprocessing": "Standard scaling",
+      "categorical_preprocessing": "One-hot encoding",
+      "implementation": "scikit-learn pipeline"
+    },
+    "split": {
+      "strategy": "Stratified adaptation/evaluation split",
+      "adaptation_rows": 600,
+      "evaluation_rows": 200,
+      "evaluation_fraction": 0.25,
+      "random_state": 42
+    },
+    "candidate_training_rows": 2000,
+    "quality_gate": {
+      "metric": "F1",
+      "minimum_candidate_f1": 0.65,
+      "rule": "Candidate holdout F1 must be at least 0.65 and no lower than champion holdout F1.",
+      "automatic_promotion": false
+    }
+  },
+  "evaluation_results": {
+    "champion_on_complete_incoming_batch": {
+      "rows": 800,
+      "accuracy": 0.753,
+      "precision": 0.609,
+      "recall": 0.731,
+      "f1": 0.664
+    },
+    "holdout_comparison": {
+      "rows": 200,
+      "champion": {
+        "accuracy": 0.8,
+        "precision": 0.667,
+        "recall": 0.806,
+        "f1": 0.73
+      },
+      "candidate": {
+        "accuracy": 0.79,
+        "precision": 0.651,
+        "recall": 0.806,
+        "f1": 0.72
+      }
+    },
+    "quality_gate": {
+      "status": "retain_champion",
+      "reason": "The candidate exceeded the minimum F1 of 0.65 but scored approximately 0.010 below the champion on the same holdout, so it did not satisfy the non-regression rule.",
+      "champion_updated_automatically": false
+    }
+  },
+  "project_assessment": [
+    {
+      "area": "Data handling",
+      "evaluation": "Required columns, empty input, missing values, duplicate identifiers, and target validity are checked. Invalid input is rejected explicitly."
+    },
+    {
+      "area": "Machine-learning pipeline",
+      "evaluation": "Preprocessing and classification are composed in a scikit-learn pipeline so the transformations are shared across training and prediction."
+    },
+    {
+      "area": "Evaluation design",
+      "evaluation": "The candidate is evaluated on a stratified holdout excluded from candidate training. Champion and candidate are compared on the same rows using accuracy, precision, recall, and F1."
+    },
+    {
+      "area": "Model governance",
+      "evaluation": "The F1 threshold and non-regression rule are explicit. Automatic champion promotion is disabled."
+    },
+    {
+      "area": "Reproducibility and artifacts",
+      "evaluation": "Timestamped runs save the candidate model, evaluation report, and quality-gate decision. The evaluated run was logged to MLflow."
+    },
+    {
+      "area": "Testing",
+      "evaluation": "The project test suite completed successfully with 3 passing tests. The generated run also passed scripts/validate_run.py."
+    },
+    {
+      "area": "CI/CD",
+      "evaluation": "A GitHub Actions workflow is configured for dependency checks, Python compilation, tests, model evaluation, and artifact validation. A remote GitHub Actions run was not part of this evaluation."
+    },
+    {
+      "area": "Deployment scope",
+      "evaluation": "The project packages and validates model artifacts but has no deployed service or live inference endpoint."
+    }
+  ],
+  "strengths": [
+    "Clear separation between data validation, modeling, evaluation, and quality-gate logic.",
+    "Candidate evaluation uses a held-out split and compares the candidate directly with the champion.",
+    "The champion is not silently replaced; artifacts and gate decisions are retained for review.",
+    "A fixed split seed and recorded metrics support reproducibility.",
+    "Tests cover core validation, quality-gate behavior, and end-to-end artifact creation."
+  ],
+  "limitations_and_recommendations": [
+    {
+      "limitation": "Synthetic data",
+      "recommendation": "Evaluate on a representative, appropriately governed real-world dataset before making operational decisions."
+    },
+    {
+      "limitation": "A 200-row holdout can produce variable metric estimates.",
+      "recommendation": "Consider confidence intervals or repeated/time-based validation when appropriate."
+    },
+    {
+      "limitation": "The current report does not include broader classification diagnostics.",
+      "recommendation": "Add a confusion matrix and class-specific analysis, and assess calibration and relevant fairness criteria before production use."
+    },
+    {
+      "limitation": "Feature-distribution drift and related alerts are not currently calculated.",
+      "recommendation": "Add drift monitoring and alerting if the workflow is extended for operational use."
+    },
+    {
+      "limitation": "No prediction service or production operations are implemented.",
+      "recommendation": "Add a prediction service, monitoring alerts, access controls, and a documented rollback process before production deployment."
+    }
+  ],
+  "reproducibility": {
+    "commands": [
+      "python -m mlops_monitor run",
+      "pytest -q",
+      "python scripts/validate_run.py artifacts/runs artifacts/champion.joblib"
+    ],
+    "evaluated_run_id": "20261120T094606931985Z",
+    "run_artifacts_directory": "artifacts/runs/20261120T094606931985Z/"
+  },
+  "conclusion": "The project successfully demonstrates an end-to-end MLOps monitoring and candidate-evaluation workflow. In this run, the candidate did not outperform the champion on holdout F1, and the system correctly retained the existing champion. The implementation and validation results support the stated scope as a practical demonstration. Further validation on representative data and additional operational safeguards would be required before real-world deployment.",
+  "evaluator": {
+    "grade": null,
+    "comments": null
+  }
+}
