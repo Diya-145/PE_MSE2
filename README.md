@@ -58,3 +58,22 @@ or paths, pass `--train-data`, `--new-data`, `--champion-path`, or
 An eligible candidate is **not** automatically promoted. Review its report and
 decision, then deliberately decide whether to promote it; this keeps the
 champion immutable during monitoring.
+
+## GitHub Actions CI/CD
+
+The `MLOps CI/CD` workflow runs on pushes and pull requests to `main`, and can
+also be started manually from the Actions tab. It:
+
+1. Installs the package and runs dependency checks, Python compilation, and the
+   test suite on Python 3.12 and 3.14.
+2. Trains a fresh champion, evaluates the incoming batch, trains the candidate,
+   and records the run in a local SQLite-backed MLflow tracking database.
+3. Validates the report, metrics, quality-gate decision, and candidate artifact,
+   then verifies that the champion artifact was not overwritten.
+4. Uploads the champion, candidate, evaluation report, quality-gate decision,
+   and MLflow run data as a downloadable workflow artifact for 14 days.
+
+The repository does not contain a running prediction service or cloud
+deployment target. Delivery therefore publishes a validated, immutable model
+candidate as a GitHub Actions artifact; it does not deploy or promote a model
+to a live service.

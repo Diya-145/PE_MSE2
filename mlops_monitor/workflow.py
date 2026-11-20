@@ -35,7 +35,8 @@ def _log_mlflow(
 
     import mlflow
 
-    mlflow.set_tracking_uri((run_dir.parent.parent / "mlruns").resolve().as_uri())
+    tracking_database = run_dir.parent.parent / "mlflow.db"
+    mlflow.set_tracking_uri(f"sqlite:///{tracking_database.resolve().as_posix()}")
     mlflow.set_experiment("customer-churn-model-monitoring")
     with mlflow.start_run(run_name=run_id):
         mlflow.log_param("training_rows", decision["training_rows"])

@@ -1,0 +1,99 @@
+name: MLOps CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mlops-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.14"]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install project and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+      - name: Check installed dependencies
+        run: python -m pip check
+      - name: Compile Python sources
+        run: python -m compileall -q mlops_monitor scripts tests
+      - name: Run tests
+        run: pytest -q
+
+  model-monitor:
+    name: Train, evaluate, and package model artifacts
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      quality_gate: ${{ steps.validate.outputs.quality_gate }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install project and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test,mlflow]"
+      - name: Check installed dependencies
+        run: python -m pip check
+      - name: Create initial champion
+        run: |
+          python -m mlops_monitor bootstrap \
+            --champion-path "$RUNNER_TEMP/mlops-artifacts/champion.joblib"
+      - name: Record champion checksum
+        run: |
+          champion_path="$RUNNER_TEMP/mlops-artifacts/champion.joblib"
+          champion_sha256="$(sha256sum "$champion_path" | cut -d ' ' -f 1)"
+          echo "CHAMPION_PATH=$champion_path" >> "$GITHUB_ENV"
+          echo "CHAMPION_SHA256=$champion_sha256" >> "$GITHUB_ENV"
+      - name: Evaluate batch and train candidate
+        run: |
+          python -m mlops_monitor run \
+            --champion-path "$CHAMPION_PATH" \
+            --artifacts-dir "$RUNNER_TEMP/mlops-artifacts/runs"
+      - name: Validate reports and candidate artifact
+        id: validate
+        run: |
+          python scripts/validate_run.py \
+            "$RUNNER_TEMP/mlops-artifacts/runs" \
+            "$CHAMPION_PATH"
+      - name: Confirm champion was not overwritten
+        run: |
+          current_sha256="$(sha256sum "$CHAMPION_PATH" | cut -d ' ' -f 1)"
+          test "$current_sha256" = "$CHAMPION_SHA256"
+      - name: Upload model run artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlops-model-run-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mlops-artifacts/
+          if-no-files-found: error
+          retention-days: 14
